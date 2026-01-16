@@ -116,48 +116,62 @@ password = st.sidebar.text_input("أدخل كلمة المرور:", type="passwo
 if password == "mjaleel":
     tabs = st.tabs(["📋 مطابقة عامة", "🏢 مطابقة أقسام", "🔄 مطابقة ثلاثية", "🏦 مطابقة الرواتب (قاعدتين/ورقتين)"])
 
-    # --- التبويب 1 و 2 (تم دمج المنطق للاختصار) ---
+    # --- التبويب 1 و 2 ---
     for i, tab in enumerate([tabs[0], tabs[1]]):
         with tab:
             st.subheader("📋 مطابقة ملف مع قاعدة بيانات" if i==0 else "🏢 مطابقة الأقسام")
             c1, c2 = st.columns(2)
-            f1 = c1.file_uploader(f"رفع ملف الأسماء ({i})", type="xlsx")
-            f2 = c2.file_uploader(f"رفع قاعدة البيانات ({i})", type="xlsx")
+            f1 = c1.file_uploader(f"رفع ملف الأسماء ({i})", type="xlsx", key=f"f1_{i}")
+            f2 = c2.file_uploader(f"رفع قاعدة البيانات ({i})", type="xlsx", key=f"f2_{i}")
             
             if f1 and f2:
                 df1, df2 = pd.read_excel(f1), pd.read_excel(f2)
-                col_f = st.selectbox("عمود الاسم في ملفك:", df1.columns, key=f"f{i}")
-                col_d = st.selectbox("عمود الاسم في القاعدة:", df2.columns, key=f"d{i}")
-                extra = st.multiselect("أعمدة إضافية لجلبها:", [c for c in df2.columns if c != col_d], key=f"e{i}")
+                col_f = st.selectbox("عمود الاسم في ملفك:", df1.columns, key=f"col_f_{i}")
+                col_d = st.selectbox("عمود الاسم في القاعدة:", df2.columns, key=f"col_d_{i}")
+                extra = st.multiselect("أعمدة إضافية لجلبها:", [c for c in df2.columns if c != col_d], key=f"extra_{i}")
                 
-                if st.button("🚀 بدء المطابقة", key=f"b{i}"):
+                if st.button("🚀 بدء المطابقة", key=f"btn_{i}"):
                     res = match_names_core(df1, df2, col_f, col_d, extra)
                     st.dataframe(res, use_container_width=True)
-                    st.download_button("⬇️ تحميل", to_excel_styled(res), "results.xlsx")
+                    st.download_button("⬇️ تحميل النتائج", to_excel_styled(res), f"Match_Results_{i}.xlsx")
 
-    # --- التبويب 4: البحث المتسلسل (المطلوب برمجياً) ---
+    # --- التبويب 3: المطابقة الثلاثية ---
+    with tabs[2]:
+        st.subheader("🔄 مطابقة وتلوين المجموعات الثلاثية")
+        f_3_1 = st.file_uploader("رفع ملف الأسماء للمطابقة الثلاثية", type="xlsx")
+        if f_3_1:
+            df_3_1 = pd.read_excel(f_3_1)
+            col_3_1 = st.selectbox("اختر عمود الاسم:", df_3_1.columns, key="3_1")
+            if st.button("🚀 تحليل المجموعات"):
+                # منطق مبسط للتحليل الثلاثي داخل الملف
+                df_3_1["الاسم الثلاثي"] = df_3_1[col_3_1].apply(get_first_three_words)
+                counts = df_3_1["الاسم الثلاثي"].value_counts()
+                df_3_1["الحالة"] = df_3_1["الاسم الثلاثي"].apply(lambda x: "⚠️ مكرر" if counts[x] > 1 else "✅ فريد")
+                st.dataframe(df_3_1, use_container_width=True)
+
+    # --- التبويب 4: البحث المتسلسل (المطور) ---
     with tabs[3]:
-        st.subheader("🏦 مطابقة الرواتب والـ IBAN (بحث متسلسل)")
-        st.info("المنطق: يبحث في القاعدة 1 أولاً، وإذا لم يجد ينتقل للقاعدة 2 (الرافدين).")
+        st.subheader("🏦 مطابقة الرواتب والـ IBAN (بحث متسلسل في قاعدتين)")
+        st.warning("الأولوية: يبحث في (القاعدة الأولى)، وإذا لم يجد ينتقل لـ (قاعدة الرافدين).")
         
-        mode = st.radio("مصدر القواعد:", ["ورقتين في ملف واحد", "ملفين منفصلين"], horizontal=True)
+        mode = st.radio("مصدر قواعد البيانات:", ["ورقتين في ملف واحد", "ملفين منفصلين"], horizontal=True)
         
         col1, col2, col3 = st.columns(3)
-        file_main = col1.file_uploader("📄 ملف الأسماء الأصلي", type="xlsx", key="main_pay")
+        file_main = col1.file_uploader("📄 ملف الأسماء الأصلي (الرواتب)", type="xlsx", key="main_pay")
         
         db1_df, db2_df = None, None
         
         if mode == "ورقتين في ملف واحد":
-            combined_file = col2.file_uploader("📊 ملف القواعد الموحد", type="xlsx")
+            combined_file = col2.file_uploader("📊 ملف قواعد البيانات الموحد", type="xlsx", key="comb_file")
             if combined_file:
                 xl = pd.ExcelFile(combined_file)
-                sh1 = col2.selectbox("ورقة (الموطنة):", xl.sheet_names)
-                sh2 = col3.selectbox("ورقة (الرافدين):", xl.sheet_names, index=min(1, len(xl.sheet_names)-1))
+                sh1 = col2.selectbox("اختر ورقة (القاعدة 1):", xl.sheet_names)
+                sh2 = col3.selectbox("اختر ورقة (الرافدين):", xl.sheet_names, index=min(1, len(xl.sheet_names)-1))
                 db1_df = pd.read_excel(combined_file, sheet_name=sh1)
                 db2_df = pd.read_excel(combined_file, sheet_name=sh2)
         else:
-            f_db1 = col2.file_uploader("📊 ملف قاعدة 1", type="xlsx")
-            f_db2 = col3.file_uploader("🏛️ ملف قاعدة 2 (الرافدين)", type="xlsx")
+            f_db1 = col2.file_uploader("📊 ملف القاعدة 1", type="xlsx", key="db1_sep")
+            f_db2 = col3.file_uploader("🏛️ ملف القاعدة 2 (الرافدين)", type="xlsx", key="db2_sep")
             if f_db1 and f_db2:
                 db1_df, db2_df = pd.read_excel(f_db1), pd.read_excel(f_db2)
 
@@ -165,15 +179,15 @@ if password == "mjaleel":
             df_main = pd.read_excel(file_main)
             st.markdown("---")
             ec1, ec2, ec3 = st.columns(3)
-            c_main = ec1.selectbox("عمود الاسم (الأصلي):", df_main.columns)
-            c_db1 = ec2.selectbox("عمود الاسم (قاعدة 1):", db1_df.columns)
-            c_db2 = ec3.selectbox("عمود الاسم (قاعدة 2):", db2_df.columns)
+            c_main = ec1.selectbox("عمود الاسم (في ملفك):", df_main.columns, key="c_main_4")
+            c_db1 = ec2.selectbox("عمود الاسم (في القاعدة 1):", db1_df.columns, key="c_db1_4")
+            c_db2 = ec3.selectbox("عمود الاسم (في الرافدين):", db2_df.columns, key="c_db2_4")
             
-            sel1 = st.multiselect("بيانات من قاعدة 1 (IBAN):", [c for c in db1_df.columns if c != c_db1])
-            sel2 = st.multiselect("بيانات من قاعدة 2 (IBAN):", [c for c in db2_df.columns if c != c_db2])
+            sel1 = st.multiselect("بيانات إضافية من قاعدة 1:", [c for c in db1_df.columns if c != c_db1], key="sel1_4")
+            sel2 = st.multiselect("بيانات إضافية من الرافدين:", [c for c in db2_df.columns if c != c_db2], key="sel2_4")
             
-            if st.button("🚀 تشغيل مطابقة الرواتب", type="primary"):
-                # تجهيز القواعد
+            if st.button("🚀 تشغيل مطابقة الرواتب والآيبان", type="primary", key="btn_run_4"):
+                # تجهيز القواعد (التطبيع لمرة واحدة لزيادة السرعة)
                 db1_df["norm"] = db1_df[c_db1].apply(normalize_name)
                 db2_df["norm"] = db2_df[c_db2].apply(normalize_name)
                 map1 = db1_df.drop_duplicates(subset=["norm"]).set_index("norm").to_dict(orient="index")
@@ -184,32 +198,51 @@ if password == "mjaleel":
                     name = row[c_main]
                     norm = normalize_name(name)
                     
-                    entry = {"الاسم الأصلي": name, "الاسم المطابق": "", "المصدر": "❌ لم يتم العثور", "ملاحظة": "❌"}
+                    # نموذج النتيجة الافتراضي
+                    entry = {
+                        "الاسم الأصلي": name, 
+                        "الاسم المطابق": "", 
+                        "نسبة التطابق": "", 
+                        "المصدر": "❌ لم يتم العثور", 
+                        "ملاحظة": "❌"
+                    }
                     for c in sel1: entry[f"[ق1] {c}"] = ""
                     for c in sel2: entry[f"[ق2] {c}"] = ""
                     
-                    # محاولة قاعدة 1
+                    # البحث في القاعدة الأولى
                     bm1, s1 = find_best_match_in_db(norm, map1)
                     if bm1:
                         d = map1[bm1]
-                        entry.update({"الاسم المطابق": d[c_db1], "المصدر": "✅ القاعدة 1", "ملاحظة": "✅"})
+                        entry.update({
+                            "الاسم المطابق": d[c_db1],
+                            "نسبة التطابق": f"{round(s1)}%",
+                            "المصدر": "✅ القاعدة 1",
+                            "ملاحظة": "✅"
+                        })
                         for c in sel1: entry[f"[ق1] {c}"] = d.get(c, "")
                     else:
-                        # محاولة قاعدة 2
+                        # إذا لم يجد، يبحث في القاعدة الثانية (الرافدين)
                         bm2, s2 = find_best_match_in_db(norm, map2)
                         if bm2:
                             d = map2[bm2]
-                            entry.update({"الاسم المطابق": d[c_db2], "المصدر": "✅ قاعدة الرافدين", "ملاحظة": "✅"})
+                            entry.update({
+                                "الاسم المطابق": d[c_db2],
+                                "نسبة التطابق": f"{round(s2)}%",
+                                "المصدر": "✅ الرافدين",
+                                "ملاحظة": "✅"
+                            })
                             for c in sel2: entry[f"[ق2] {c}"] = d.get(c, "")
                     
                     final_results.append(entry)
                 
                 res_df = pd.DataFrame(final_results)
                 st.dataframe(res_df, use_container_width=True)
-                st.download_button("⬇️ تحميل كشف الرواتب", to_excel_styled(res_df), "Salary_Match.xlsx")
+                
+                # تصدير التقرير
+                xl_data = to_excel_styled(res_df)
+                st.download_button("⬇️ تحميل كشف الرواتب الموحد", xl_data, "Salary_Verification.xlsx")
 
 elif password:
-    st.error("❌ كلمة المرور خاطئة")
+    st.error("❌ كلمة المرور غير صحيحة")
 else:
-    st.warning("الرجاء إدخال كلمة المرور")
- 
+    st.info("الرجاء إدخال كلمة المرور (mjaleel) للبدء.")
